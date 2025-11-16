@@ -10,6 +10,24 @@ class GameServer:
         self.game_state = GameState()
         self.clients = {}  # websocket -> player_id
         self.next_player_id = 0
+
+    def generate_walls(self):
+        """Generate basic wall structure"""
+        walls = set()
+        # Border walls
+        for x in range(self.width):
+            walls.add((x, 0))
+            walls.add((x, self.height - 1))
+        for y in range(self.height):
+            walls.add((0, y))
+            walls.add((self.width - 1, y))
+        
+        # Internal walls (every other position)
+        for x in range(2, self.width - 2, 2):
+            for y in range(2, self.height - 2, 2):
+                walls.add((x, y))
+        
+        return walls
     
     async def handle_client(self, websocket):
         player_id = f"player_{self.next_player_id}"
