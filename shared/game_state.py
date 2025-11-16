@@ -15,24 +15,6 @@ class GameState:
         self.bombs = []    # [{x, y, timer, owner_id}]
         self.walls = self.generate_walls()
     
-    def generate_walls(self):
-        """Generate basic wall structure"""
-        walls = set()
-        # Border walls
-        for x in range(self.width):
-            walls.add((x, 0))
-            walls.add((x, self.height - 1))
-        for y in range(self.height):
-            walls.add((0, y))
-            walls.add((self.width - 1, y))
-        
-        # Internal walls (every other position)
-        for x in range(2, self.width - 2, 2):
-            for y in range(2, self.height - 2, 2):
-                walls.add((x, y))
-        
-        return walls
-    
     def to_dict(self):
         return {
             "width": self.width,
