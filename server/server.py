@@ -10,21 +10,25 @@ class GameServer:
         self.game_state = GameState()
         self.clients = {}  # websocket -> player_id
         self.next_player_id = 0
+        self.game_state.walls = self.generate_walls()
 
     def generate_walls(self):
         """Generate basic wall structure"""
         walls = set()
+        width = self.game_state.width   # ✅ Get from game_state
+        height = self.game_state.height # ✅ Get from game_state
+        
         # Border walls
-        for x in range(self.width):
+        for x in range(width):
             walls.add((x, 0))
-            walls.add((x, self.height - 1))
-        for y in range(self.height):
+            walls.add((x, height - 1))
+        for y in range(height):
             walls.add((0, y))
-            walls.add((self.width - 1, y))
+            walls.add((width - 1, y))
         
         # Internal walls (every other position)
-        for x in range(2, self.width - 2, 2):
-            for y in range(2, self.height - 2, 2):
+        for x in range(2, width - 2, 2):
+            for y in range(2, height - 2, 2):
                 walls.add((x, y))
         
         return walls

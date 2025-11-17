@@ -13,8 +13,7 @@ class GameState:
         self.height = height
         self.players = {}  # player_id -> {x, y}
         self.bombs = []    # [{x, y, timer, owner_id}]
-        self.walls = self.generate_walls()
-    
+
     def to_dict(self):
         return {
             "width": self.width,
