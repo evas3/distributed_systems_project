@@ -15,8 +15,8 @@ class GameServer:
     def generate_walls(self):
         """Generate basic wall structure"""
         walls = set()
-        width = self.game_state.width   # ✅ Get from game_state
-        height = self.game_state.height # ✅ Get from game_state
+        width = self.game_state.width   # Get from game_state
+        height = self.game_state.height # Get from game_state
         
         # Border walls
         for x in range(width):
