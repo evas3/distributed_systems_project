@@ -1,5 +1,6 @@
 import pygame
-from level import Level
+from localLevel import Level
+from services.queue_service import EventQueue
 
 LEVEL_MAP = [[0, 0, 1, 0, 0],
              [0, 0, 1, 0, 0],
@@ -38,7 +39,8 @@ def main():
     display = pygame.display.set_mode((display_width, display_height))
 
     pygame.display.set_caption("DisSysBomberman")
-    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE)
+    event_queue = EventQueue()
+    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE, event_queue)
     game_loop = GameLoop(level, CELL_SIZE, display, 1)
 
 
