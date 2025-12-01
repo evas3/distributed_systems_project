@@ -7,9 +7,11 @@ from objects.bombObject import BombObject
 from objects.explosionObject import ExplosionObject
 from sprites.bomb import Bomb
 from sprites.explosion import Explosion
+from services.comms import ServerComms
+
 
 class Level:
-    def __init__(self, level_map, player_map, bomb_map, explosion_map, cell_size):
+    def __init__(self, level_map, player_map, bomb_map, explosion_map, cell_size, event_queue):
         self.cell_size = cell_size
         self.players = {}
         self.bombs = {}
@@ -20,8 +22,15 @@ class Level:
         self.explosion_map = explosion_map
         self.walls = pygame.sprite.Group()
         self.floors = pygame.sprite.Group()
+        self.event_queue = event_queue
+        
+        self.comms = ServerComms()
+
+
+        self.local_tick = 0
 
         self.global_bomb_id = 1
+        self.global_explosion_id = 1
 
         self.static_sprites = pygame.sprite.Group()
 
@@ -61,27 +70,12 @@ class Level:
         for player in self.players.values():
             player.update(dt)
 
-        exploded = []
+        events = self.event_queue.pop_ready(self.local_tick)
 
-        for bomb in self.bombs.values():
-            bomb.update()
-            if bomb.timer <= 0:
-                exploded.append(bomb)
+        for event in events:
+            self.handle_event(event[1], event[2])
 
-        removed = []
-        for explosion in self.explosions.values():
-            explosion.update()
-            if self.player_map[explosion.y][explosion.x] != 0:
-                player_id = self.player_map[explosion.y][explosion.x]
-                #self.kill_player(player_id)
-            if explosion.timer <= 0:
-                removed.append(explosion)
-
-        for bomb in exploded:
-            self.explode_bomb(bomb)
-
-        for explosion in removed:
-            self.remove_explosion(explosion)
+        self.local_tick += 1
 
     def render(self, screen):
         """renders all graphics"""
@@ -126,31 +120,33 @@ class Level:
     def lay_bomb(self, id):
         """spawns a new bomb object on the player coordinates"""
         player = self.players[id]
-
-        if self.bomb_map[player.y][player.x] != 0:
-            return False
-        self.bomb_map[player.y][player.x] = self.global_bomb_id
-        self.bombs[self.global_bomb_id] = BombObject(self.global_bomb_id, player.x, player.y, id, 120, Bomb(player.x * self.cell_size, player.y * self.cell_size, self.cell_size))
+        self.comms.send_event(0, {"x":player.x, "y":player.y, "player": id})
+        self.spawn_bomb(self.local_tick + 120, self.global_bomb_id, player.x, player.y, id)
         self.global_bomb_id += 1
 
+    def spawn_bomb(self, explosion_tick, id, x, y, owner):
+        self.bomb_map[y][x] = id
+        self.bombs[id] = BombObject(id, x, y, owner, 120, Bomb(x*self.cell_size, y*self.cell_size, self.cell_size))
+        self.event_queue.push(explosion_tick, 1, (id, x, y, owner))
 
         
-    def explode_bomb(self, bomb):
+    def explode_bomb(self, data):
         """removes the bomb object and spawns explosion objects"""
-        self.bomb_map[bomb.y][bomb.x] = 0
-        del self.bombs[bomb.id]
+        # data = (id, x, y, owner)
+        self.bomb_map[data[2]][data[1]] = 0
+        del self.bombs[data[0]]
 
-        self.spawn_explosion(bomb.x, bomb.y, bomb.owner)
+        self.spawn_explosion(data[1], data[2], data[3])
 
         for direction in [(1,0), (-1,0), (0,1), (0,-1)]:
-            nx = bomb.x + direction[0]
-            ny = bomb.y + direction[1]
+            nx = data[1] + direction[0]
+            ny = data[2] + direction[1]
             if nx < 0 or nx > len(self.level_map[0]) - 1 or ny < 0 or ny > len(self.level_map) - 1:
                 continue
             
             if self.level_map[ny][nx] != 0:
                 continue
-            self.spawn_explosion(nx, ny, bomb.owner)
+            self.spawn_explosion(nx, ny, data[3])
 
             if self.bomb_map[ny][nx] != 0:
                 bomb_id = self.bomb_map[ny][nx]
@@ -161,15 +157,32 @@ class Level:
     
     def spawn_explosion(self, x, y, owner):
         """spawns new explosion object on given coordinates"""
-        if self.explosion_map[y][x] != 0:
-            return False
         new_explosion = ExplosionObject(x, y, owner, 90, Explosion(x * self.cell_size, y * self.cell_size, self.cell_size))
-        self.explosion_map[y][x] = 1
-        self.explosions[(x,y)] = new_explosion
+        self.explosion_map[y][x] += 1
+        self.explosions[self.global_explosion_id] = new_explosion
+        self.event_queue.push(self.local_tick + 90, 3, (self.global_explosion_id, x, y))
+        self.global_explosion_id += 1
 
-    def remove_explosion(self, explosion):
+    def remove_explosion(self, id):
         """removes given explosion object"""
-        self.explosion_map[explosion.y][explosion.x] = 0
-        del self.explosions[(explosion.x, explosion.y)]
+        explosion = self.explosions[id]
+        self.explosion_map[explosion.y][explosion.x] -= 1
+        del self.explosions[id]
 
     # TODO def kill_player(self, id)
+
+    def handle_event(self, event_type, data):
+        # 0 = bomb spawn
+        # 1 = bomb explode
+        # 2 = player moves
+        # 3 = remove explosion
+
+        match event_type:
+            case 0:
+                self.spawn_bomb(data[0], data[1], data[2], data[3], data[4])
+            case 1:
+                self.explode_bomb(data)
+            case 2:
+                pass
+            case 3:
+                self.remove_explosion(data[0])
