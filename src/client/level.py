@@ -134,7 +134,6 @@ class Level:
         self.global_bomb_id += 1
 
 
-        
     def explode_bomb(self, bomb):
         """removes the bomb object and spawns explosion objects"""
         self.bomb_map[bomb.y][bomb.x] = 0
@@ -157,7 +156,6 @@ class Level:
                 other_bomb = self.bombs[bomb_id]
                 other_bomb.timer = 0
                 continue
-
     
     def spawn_explosion(self, x, y, owner):
         """spawns new explosion object on given coordinates"""

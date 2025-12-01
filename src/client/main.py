@@ -1,5 +1,6 @@
 import pygame
 from level import Level
+from client import Client
 
 LEVEL_MAP = [[0, 0, 1, 0, 0],
              [0, 0, 1, 0, 0],
@@ -39,24 +40,26 @@ def main():
 
     pygame.display.set_caption("DisSysBomberman")
     level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE)
-    game_loop = GameLoop(level, CELL_SIZE, display, 1)
-
+    # TODO changing player ids
+    game_loop = GameLoop(level, CELL_SIZE, display, 1, Client())
 
     pygame.init()
-    game_loop.start()
+    game_loop.start_loop()
 
-    
 
 
 class GameLoop:
-    def __init__(self, level, cell_size, display, player_id):
+    def __init__(self, level, cell_size, display, player_id, client):
+        self.client = client
+        client.start()
+
         self._level = level
         self._clock = pygame.time.Clock()
         self._cell_size = cell_size
         self._display = display
         self._player_id = player_id
 
-    def start(self):
+    def start_loop(self):
         while True:
             if self._handle_events() == False:
                 break
@@ -65,21 +68,25 @@ class GameLoop:
 
             self._clock.tick(60)
 
+    """sends the event to server or if quit closes connection"""
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT:
-                    self._level.move_player(self._player_id, -1, 0)
+                    message = "left"
                 if event.key == pygame.K_RIGHT:
-                    self._level.move_player(self._player_id, 1, 0)
+                    message = "right"
                 if event.key == pygame.K_UP:
-                    self._level.move_player(self._player_id, 0, -1)
+                    message = "up"
                 if event.key == pygame.K_DOWN:
-                    self._level.move_player(self._player_id, 0, 1)
+                    message = "down"
                 if event.key == pygame.K_SPACE:
-                    self._level.lay_bomb(self._player_id)
+                    message = "bomb"
+                self.client.send(message, self._player_id)
             elif event.type == pygame.QUIT:
+                self.client.close()
                 return False
+
 
     def _render(self):
         self._level.update(5)
