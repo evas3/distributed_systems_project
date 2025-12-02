@@ -28,3 +28,10 @@ class ClientComms():
                 print("Couldn't handle", error)
                 break
         # TODO client disconnecting
+
+    def broadcast(self, clients, msg_type, data, tick):
+        message = {"type": msg_type, "tick": tick, "data": data}
+        message = json.dumps(message).encode("utf-8")
+        print(message, flush=True)
+        for client in clients:
+            client.send(message)
