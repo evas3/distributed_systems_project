@@ -7,11 +7,10 @@ from objects.bombObject import BombObject
 from objects.explosionObject import ExplosionObject
 from sprites.bomb import Bomb
 from sprites.explosion import Explosion
-from services.comms import ServerComms
-
+import time
 
 class Level:
-    def __init__(self, level_map, player_map, bomb_map, explosion_map, cell_size, event_queue):
+    def __init__(self, level_map, player_map, bomb_map, explosion_map, cell_size, event_queue, comms):
         self.cell_size = cell_size
         self.players = {}
         self.bombs = {}
@@ -24,12 +23,12 @@ class Level:
         self.floors = pygame.sprite.Group()
         self.event_queue = event_queue
         
-        self.comms = ServerComms()
+        self.comms = comms
 
-
+        self.tick_interval = 1.0/60
         self.local_tick = 0
+        self.max_clock_drift = 5
 
-        self.global_bomb_id = 1
         self.global_explosion_id = 1
 
         self.static_sprites = pygame.sprite.Group()
@@ -70,8 +69,19 @@ class Level:
         for player in self.players.values():
             player.update(dt)
 
-        events = self.event_queue.pop_ready(self.local_tick)
+        while not self.comms.recv_queue.empty():
+            msg = self.comms.recv_queue.get()
+            
+            if msg["type"] == "update":
+                for event in msg["data"]:
+                    self.handle_event(event["event_type"], event["data"])
+            elif msg["type"] == "clock":
+                server_tick = msg["data"]["server_tick"]
+                latency = (time.perf_counter() - msg["data"]["timestamp"]) / 2
+                server_tick = server_tick + int(latency / self.tick_interval)
+                self.sync_local_tick(server_tick)
 
+        events = self.event_queue.pop_ready(self.local_tick)
         for event in events:
             self.handle_event(event[1], event[2])
 
@@ -91,7 +101,7 @@ class Level:
             explosion.render(screen)
 
     def move_player(self, id, x, y):
-        """checks if player can move, and moves if so"""
+        """checks if player can move, and sends event to server"""
         
         player_x = self.players[id].x
         player_y = self.players[id].y
@@ -99,40 +109,50 @@ class Level:
         new_y = player_y + y
 
         if self.players[id].moving:
-            return False
+            return
+
 
         if (0 <= new_x < len(self.level_map[0])) and (0 <= new_y < len(self.level_map)):
             if self.level_map[new_y][new_x] != 0:
-                return False
+                return
             elif self.player_map[new_y][new_x] != 0:
-                return False
+                return
             elif self.bomb_map[new_y][new_x] != 0:
-                return False
+                return
             else:
-                self.player_map[player_y][player_x] = 0
-                self.player_map[new_y][new_x] = id
-                self.players[id].move(x, y)
-                return True
+                print(f"[CLIENT] Sending Move Request: {x}, {y}", flush=True)
+                self.comms.send_event(2, [id, x, y, new_x, new_y])
+                return
 
         else:
-            return False
+            return
+        
+    def handle_moving(self, data):
+        player_id, x, y, new_x, new_y = data
+
+        self.player_map[new_y-y][new_x-x] = 0
+        self.player_map[new_y][new_x] = player_id
+        self.players[player_id].move(x, y)
+
+    def handle_moving_stop(self, data):
+        player_id = data[0]
+        self.players[player_id].moving = False
         
     def lay_bomb(self, id):
         """spawns a new bomb object on the player coordinates"""
         player = self.players[id]
-        self.comms.send_event(0, {"x":player.x, "y":player.y, "player": id})
-        self.spawn_bomb(self.local_tick + 120, self.global_bomb_id, player.x, player.y, id)
-        self.global_bomb_id += 1
+        print(f"[CLIENT] Sending Bomb Request", flush=True)
+        self.comms.send_event(0, [player.x, player.y, id])
 
-    def spawn_bomb(self, explosion_tick, id, x, y, owner):
+    def spawn_bomb(self, x, y, id, owner, explosion_tick):
         self.bomb_map[y][x] = id
         self.bombs[id] = BombObject(id, x, y, owner, 120, Bomb(x*self.cell_size, y*self.cell_size, self.cell_size))
         self.event_queue.push(explosion_tick, 1, (id, x, y, owner))
 
-        
     def explode_bomb(self, data):
         """removes the bomb object and spawns explosion objects"""
-        # data = (id, x, y, owner)
+        if self.bombs.get(data[0]) is None:
+            return
         self.bomb_map[data[2]][data[1]] = 0
         del self.bombs[data[0]]
 
@@ -154,7 +174,6 @@ class Level:
                 other_bomb.timer = 0
                 continue
 
-    
     def spawn_explosion(self, x, y, owner):
         """spawns new explosion object on given coordinates"""
         new_explosion = ExplosionObject(x, y, owner, 90, Explosion(x * self.cell_size, y * self.cell_size, self.cell_size))
@@ -165,24 +184,32 @@ class Level:
 
     def remove_explosion(self, id):
         """removes given explosion object"""
-        explosion = self.explosions[id]
-        self.explosion_map[explosion.y][explosion.x] -= 1
-        del self.explosions[id]
-
-    # TODO def kill_player(self, id)
+        if id in self.explosions:
+            explosion = self.explosions[id]
+            self.explosion_map[explosion.y][explosion.x] -= 1
+            del self.explosions[id]
 
     def handle_event(self, event_type, data):
-        # 0 = bomb spawn
-        # 1 = bomb explode
-        # 2 = player moves
-        # 3 = remove explosion
-
+        # 0 = bomb spawn,
+        #  1 = bomb explode,
+        #  2 = player moves,
+        #  3 = remove explosion,
+        #  4 = player stops moving
         match event_type:
             case 0:
                 self.spawn_bomb(data[0], data[1], data[2], data[3], data[4])
             case 1:
                 self.explode_bomb(data)
             case 2:
-                pass
+                self.handle_moving(data)
             case 3:
                 self.remove_explosion(data[0])
+            case 4:
+                self.handle_moving_stop(data)
+
+    def sync_local_tick(self, server_tick):
+        difference = server_tick - self.local_tick
+
+        if abs(difference) > self.max_clock_drift:
+            print(f"[CLOCK] Adjusting local clock: {self.local_tick} -> {server_tick} (Diff: {difference})", flush=True)
+            self.local_tick += difference
