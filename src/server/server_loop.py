@@ -1,57 +1,87 @@
 import time
-from queue import Queue
-from services.comms import ClientComms
-import threading
+import socket
+from objects.player import PlayerObject
+from leader import Leader
+from follower import Follower
 
 class ServerLoop:
-    def __init__(self, tick_rate=60):
+    def __init__(self, server_id, peers_config, level_map, player_map, bomb_map, explosion_map, tick_rate=60):
+        self.server_id = server_id
+        self.peers_config = peers_config
         self.tick_rate = tick_rate
-        self.global_tick = 0
         self.tick_interval = 1.0 / tick_rate
 
-        self.client_queues = {}
+        self.heartbeat_interval = 30
+        self.last_heartbeat_sent = 0
 
-        self.comms = ClientComms()
+        self.last_heartbeat_tick = 0
+        self.heartbeat_timeout = 120
+        
+        self.global_tick = 0
+        self.level_map = level_map
+        self.player_map = player_map
+        self.bomb_map = bomb_map
+        self.explosion_map = explosion_map
+        self.players = {}
+        self.bombs = {}
+        self.explosions = {}
+        
+        self.global_bomb_id = 1
+        self.global_explosion_id = 1
+        self.new_player_id = 1
 
-        self.wait_for_clients()
-        self.last_tick = time.perf_counter()
+        self.role_obj = None
 
+        self.initialize_players()
 
-    def start_loop(self):
+    def initialize_players(self):
+        height = len(self.level_map)
+        width = len(self.level_map[0])
+        for y in range(height):
+            for x in range(width):
+                cell = self.player_map[y][x]
+                if cell != 0:
+                    self.players[cell] = PlayerObject(cell, x, y)
+
+    def start(self):
+        """Decides role based on ID and availability of peers"""
+        print(f"Server {self.server_id} loop running...", flush=True)
+        
         while True:
-            now = time.perf_counter()
+            am_i_leader = True
+            leader_info = None
 
-            if now - self.last_tick >= self.tick_interval:
-                self.global_tick += 1
-                self.last_tick += self.tick_interval
+            print(f"[CONSENSUS] Server {self.server_id} checking peers...", flush=True)
 
-                self.process_inputs()
-                #update state
-                #send updates to clients
+            for peer_id, ip, port in self.peers_config:
+                if peer_id < self.server_id:
+                    if self.check_connection(ip, port):
+                        am_i_leader = False
+                        leader_info = (ip, port)
+                        print(f"[CONSENSUS] Found superior peer {peer_id} at {ip}:{port}", flush=True)
+                        break
+            
+            if am_i_leader:
+                print(f"[ROLE] Server {self.server_id} became LEADER", flush=True)
+                self.role_obj = Leader(self)
 
-            time.sleep(0.0005)
+                self.role_obj.run_leader()
+            else:
+                print(f"[ROLE] Server {self.server_id} became FOLLOWER (Leader is {leader_info})", flush=True)
+                self.role_obj = Follower(leader_info, self)
+
+                self.role_obj.run_follower()
+            
+            print("[FAILOVER] Role change detected, re-evaluating...", flush=True)
+            time.sleep(1)
+
+    def check_connection(self, ip, port):
+        """Pings a server to see if it is alive"""
+        try:
+            s = socket.create_connection((ip, port), timeout=0.5)
+            s.close()
+            return True
+        except:
+            return False
+
     
-    def process_inputs(self):
-        for client, q in self.client_queues.items():
-            while not q.empty():
-                msg = q.get()
-                print(msg)
-                self.handle_input(client, msg)
-
-    def handle_input(self, client, msg):
-        print(msg["event_type"], flush=True)
-
-    def wait_for_clients(self):
-        #TODO make into a loop for more clients
-        client_socket = self.comms.receive_connection()
-
-        client_q = Queue()
-        self.client_queues[client_socket] = client_q
-
-        thread = threading.Thread(
-            target=self.comms.handle,
-            args=(client_socket, client_q),
-            daemon=True
-        )
-
-        thread.start()

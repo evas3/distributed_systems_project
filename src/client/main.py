@@ -1,6 +1,13 @@
 import pygame
-from client.level import Level
+from level import Level
 from services.queue_service import EventQueue
+from services.comms import ServerComms
+
+SERVERS_LIST = [
+    ("127.0.0.1", 55533),
+    ("127.0.0.1", 55534),
+    ("127.0.0.1", 55535)
+]
 
 LEVEL_MAP = [[0, 0, 1, 0, 0],
              [0, 0, 1, 0, 0],
@@ -28,27 +35,23 @@ EXPLOSION_MAP = [[0, 0, 0, 0, 0],
 
 CELL_SIZE = 100
 
-
 def main():
+    comms = ServerComms(SERVERS_LIST)
+    
     height = len(LEVEL_MAP)
     width = len(LEVEL_MAP[0])
     display_height = height * CELL_SIZE
     display_width = width * CELL_SIZE
 
-
     display = pygame.display.set_mode((display_width, display_height))
 
-    pygame.display.set_caption("DisSysBomberman")
+    pygame.display.set_caption("DisSysBomberman Client")
     event_queue = EventQueue()
-    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE, event_queue)
+    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE, event_queue, comms)
     game_loop = GameLoop(level, CELL_SIZE, display, 1)
-
 
     pygame.init()
     game_loop.start()
-
-    
-
 
 class GameLoop:
     def __init__(self, level, cell_size, display, player_id):
@@ -62,9 +65,7 @@ class GameLoop:
         while True:
             if self._handle_events() == False:
                 break
-
             self._render()
-
             self._clock.tick(60)
 
     def _handle_events(self):
@@ -82,11 +83,11 @@ class GameLoop:
                     self._level.lay_bomb(self._player_id)
             elif event.type == pygame.QUIT:
                 return False
+        return True
 
     def _render(self):
         self._level.update(5)
         self._level.render(self._display)
-        
         pygame.display.update()
 
 if __name__ == "__main__":
