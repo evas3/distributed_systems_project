@@ -29,6 +29,23 @@ class Follower:
         
             while True:
                 now = time.perf_counter()
+
+                while not self.server_loop.peer_queue.empty():
+                    msg = self.server_loop.peer_queue.get()
+                    if msg["type"] == "leader_announce":
+                        if msg["from"] < self.server_loop.leader_id:
+                            self.server_loop.has_leader = True
+                            self.server_loop.leader_id = msg["from"]
+                            self.server_loop.leader_addr = (self.server_loop.peers_config[msg["from"] - 1][1], self.server_loop.peers_config[msg["from"] - 1][2])
+                            return "LEADER_SWITCH"
+                        else:
+                            pass
+                    elif msg["type"] == "bully_ok":
+                        pass
+                    elif msg["type"] == "bully":
+                        self.server_loop.peer_queue.put(msg)
+                        return "NEED_ELECTION"
+
                 if now - self.last_tick >= self.server_loop.tick_interval:
                     self.server_loop.global_tick += 1
                     self.last_tick += self.server_loop.tick_interval
@@ -44,7 +61,8 @@ class Follower:
 
         except Exception as e:
             print(f"[FOLLOWER] Connection to Leader lost: {e}", flush=True)
-            return
+            self.comms.close_socket()
+            return "NEED_ELECTION"
         
     def process_follower_messages(self):
         while not self.leader_queue.empty():
