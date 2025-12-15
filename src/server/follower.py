@@ -17,7 +17,7 @@ class Follower:
         self.last_tick = time.perf_counter()
 
     def run(self):
-        """Follower connects to leader and mirrors state"""
+        """Runs the follower clock loop"""
 
         try:
             self.comms = FollowerComms(self.server_loop.leader_addr, self.server_loop.server_id, self.leader_queue)
@@ -67,12 +67,14 @@ class Follower:
             return "NEED_ELECTION"
         
     def process_follower_messages(self):
+        """Processes messages from leader in message queue"""
         while not self.leader_queue.empty():
                 msg = self.leader_queue.get()
                 print(f"[INPUT] Received {msg['type']} from leader", flush=True)
                 self.process_follower_message(msg)
 
     def process_follower_message(self, message):
+        """Parses the given message"""
         if message["type"] == "event":
             ack = {
                 "type": "ack",
@@ -91,6 +93,7 @@ class Follower:
             self.server_loop.last_heartbeat_tick = self.server_loop.global_tick
 
     def wait_for_commit(self, tick):
+        """Blocks to wait for commit message from leader"""
         #TODO ADD TIMEOUT
         while not self.comms.commit:
             time.sleep(0.0005)
@@ -100,9 +103,11 @@ class Follower:
             return True
 
     def sync_clock_to_leader(self, tick):
+        """Syncs its clock to leader's"""
         self.server_loop.global_tick = tick
 
     def parse_event(self, event_type, event_data):
+        """Calls appropriate event handler for given event type"""
         # 0 = bomb spawn,
         #  1 = bomb explode,
         #  2 = player moves,

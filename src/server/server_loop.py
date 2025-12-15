@@ -51,6 +51,7 @@ class ServerLoop:
         self.initialize_players()
 
     def initialize_players(self):
+        """Creates player objects from player map"""
         height = len(self.level_map)
         width = len(self.level_map[0])
         for y in range(height):
@@ -60,6 +61,7 @@ class ServerLoop:
                     self.players[cell] = PlayerObject(cell, x, y)
 
     def create_from_state(self):
+        """Creates bomb and explosion objects from maps"""
         height = len(self.level_map)
         width = len(self.level_map[0])
         for y in range(height):
@@ -76,7 +78,7 @@ class ServerLoop:
                     self.global_explosion_id += 1
 
     def start(self):
-        """Decides role based on ID and availability of peers"""
+        """Starts the server loop, runs bully if necessary, and runs appropriate role (follower or leader)"""
         print(f"Server {self.server_id} starting...", flush=True)
 
         self.leader_id = self.collect_leader_info()
@@ -112,6 +114,7 @@ class ServerLoop:
             
 
     def run_bully(self):
+        """Starts the election algorithm to find a new leader with lowest id"""
         print("Starting election", flush=True)
 
         self.start_election()
@@ -120,7 +123,6 @@ class ServerLoop:
         while True:
             while not self.peer_queue.empty():
                 msg = self.peer_queue.get()
-                print(msg, flush=True)
                 if msg["type"] == "leader_announce":
                     self.has_leader = True
                     self.role = Follower(self)
@@ -142,6 +144,7 @@ class ServerLoop:
             time.sleep(0.001)
 
     def start_election(self):
+        """Sends election messages to all peers (higher ids ignore this)"""
         msg = {
             "type": "bully",
             "from": self.server_id
@@ -152,6 +155,7 @@ class ServerLoop:
         self.election_start_time = time.perf_counter()
 
     def handle_bully(self, from_id):
+        """Sends response to the election message to let know that this node is candidate for leader"""
         msg = {
             "type": "bully_ok",
             "from": self.server_id
@@ -159,6 +163,7 @@ class ServerLoop:
         self.peer_comms.send_to_peer(from_id, msg)
 
     def become_leader(self):
+        """Sets role to leader and announces itself as leader to other nodes"""
         self.has_leader = True
         self.leader_id = self.server_id
         self.peer_comms.current_leader = self.server_id
@@ -166,6 +171,7 @@ class ServerLoop:
         self.send_leader_announce()
 
     def send_leader_announce(self):
+        """Sends leader announcement to other nodes"""
         msg = {
             "type": "leader_announce",
             "from": self.server_id
@@ -179,6 +185,7 @@ class ServerLoop:
         return (now - self.election_start_time) >= self.election_timeout
     
     def collect_leader_info(self, timeout=2.0):
+        """Queries other nodes for current leader"""
         leader_ids = []
         start = time.perf_counter()
 
@@ -194,6 +201,7 @@ class ServerLoop:
         return self.server_id
     
     def get_current_state(self, timeout=2.0):
+        """Retrieves the current state from the leader"""
         self.peer_comms.send_to_peer(
             self.leader_id,
             {"type": "state_request", "from": self.server_id}
@@ -213,6 +221,7 @@ class ServerLoop:
             time.sleep(0.01)
 
     def send_current_state(self, peer_id):
+        """Sends the current state to querying node"""
         msg = {
             "type": "curr_state",
             "level_map": self.level_map,

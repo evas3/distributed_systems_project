@@ -13,6 +13,7 @@ class FollowerComms:
         self.connect_to_leader()
 
     def connect_to_leader(self):
+        """Connects to leader and starts a thread to receive messages"""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.connect(self.leader_addr)
         print(f"[FOLLOWER] Connected to Leader at {self.leader_addr}", flush=True)
@@ -33,6 +34,7 @@ class FollowerComms:
         thread.start()
 
     def _recv_loop(self):
+        """Loop to receive messages and add them to message queue"""
         try:
             while True:
                 data = self.socket.recv(4096).decode("utf-8")
@@ -55,9 +57,11 @@ class FollowerComms:
             print(f"[FOLLOWER] _recv_loop error: {e}", flush=True)
 
     def send_to_leader(self, msg):
+        """Sends message to leader"""
         self.socket.send(json.dumps(msg).encode())
 
     def close_socket(self):
+        """Closes socket to leader"""
         try:
             self.socket.shutdown(socket.SHUT_RDWR)
         except:

@@ -18,6 +18,7 @@ class PeerComms:
         self._connect_to_peers()
 
     def _start_listener(self, port):
+        """Starts listening thread"""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("0.0.0.0", port))
@@ -29,6 +30,7 @@ class PeerComms:
         thread.start()
 
     def _accept_loop(self):
+        """Loop to accept new peers"""
         while True:
             conn, addr = self.listener.accept()
             raw = conn.recv(1024).decode("utf-8")
@@ -45,6 +47,7 @@ class PeerComms:
                 self._start_recv_thread(conn)
     
     def _start_recv_thread(self, conn):
+        """Starts the thread to receive messages"""
         t = threading.Thread(
             target=self._recv_loop,
             args=(conn,),
@@ -53,6 +56,7 @@ class PeerComms:
         t.start()
 
     def _recv_loop(self, conn):
+        """Loop to add messages to message queue"""
         while True:
             try:
                 data = conn.recv(4096)
@@ -70,6 +74,7 @@ class PeerComms:
                 return
             
     def _connect_to_peers(self):
+        """Starts a thread to try to connect to given peers"""
         for (peer_id, ip, port) in self.peers:
             if peer_id == self.server_id:
                 continue
@@ -78,6 +83,7 @@ class PeerComms:
             thread.start()
 
     def _try_connect_peer(self, peer_id, ip, port):
+        """Attempts to connect to peers"""
         while peer_id not in self.peer_sockets:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -92,6 +98,7 @@ class PeerComms:
                 time.sleep(1)
 
     def send_to_peer(self, peer_id, msg):
+        """Sends message to single peer"""
         if peer_id not in self.peer_sockets:
             return
         raw = json.dumps(msg).encode("utf-8")
@@ -101,6 +108,7 @@ class PeerComms:
             self._drop_socket(self.peer_sockets[peer_id], peer_id)
 
     def broadcast(self, msg):
+        """Sends message to all peers"""
         raw = json.dumps(msg).encode("utf-8")
         dropped = []
         for peer_id, sock in self.peer_sockets.items():
@@ -113,6 +121,7 @@ class PeerComms:
                 self._drop_socket(sock, peer_id)
 
     def _drop_socket(self, sock, key=None):
+        """Closes given socket"""
         try:
             sock.shutdown(socket.SHUT_RDWR)
         except:
