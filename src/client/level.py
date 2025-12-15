@@ -10,8 +10,10 @@ from sprites.explosion import Explosion
 import time
 
 class Level:
-    def __init__(self, level_map, player_map, bomb_map, explosion_map, cell_size, event_queue, comms):
+    def __init__(self, level_map, player_map, bomb_map, explosion_map, cell_size, event_queue, comms, local_id):
         self.cell_size = cell_size
+        self.local_id = local_id
+        self.dead = False
         self.players = {}
         self.bombs = {}
         self.explosions = {}
@@ -144,6 +146,8 @@ class Level:
     def handle_dying(self, data):
         player_id, x, y = data
         self.player_map[y][x] = 0
+        if self.local_id == player_id:
+            self.dead = True
         self.players[player_id].sprite.kill()
         del self.players[player_id]
 

@@ -80,14 +80,7 @@ class Leader:
 
                 if msg_type == "client_hello":
                     print("[NET] Connection identified as CLIENT", flush=True)
-                    """init_msg = {
-                            "type": "init",
-                            "local_id": self.server_loop.new_player_id,
-                            "level_map": self.server_loop.level_map,
-                            "player_map": self.server_loop.player_map
-                        }
-                    sock.send(json.dumps(init_msg).encode("utf-8"))
-                    """
+                
                     self.client_sockets.append(sock)
 
                     client_q = Queue()

@@ -47,7 +47,7 @@ def main():
 
     pygame.display.set_caption("DisSysBomberman Client")
     event_queue = EventQueue()
-    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE, event_queue, comms)
+    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE, event_queue, comms, 1)
     game_loop = GameLoop(level, CELL_SIZE, display, 1)
 
     pygame.init()
@@ -88,6 +88,14 @@ class GameLoop:
     def _render(self):
         self._level.update(5)
         self._level.render(self._display)
+        if self._level.dead:
+            overlay = pygame.Surface(self._display.get_size())
+            overlay.fill((0, 0, 0))
+            self._display.blit(overlay, (0, 0))
+
+            text = pygame.font.SysFont("Arial", 30).render("You lost", True, (255, 0, 0))
+            rect = text.get_rect(center=self._display.get_rect().center)
+            self._display.blit(text, rect)
         pygame.display.update()
 
 if __name__ == "__main__":
