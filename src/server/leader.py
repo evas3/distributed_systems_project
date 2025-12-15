@@ -207,6 +207,7 @@ class Leader:
         # 2 = player moves
         # 3 = remove explosion
         # 4 = player stops moving
+        # 5 = player dies
         match event_type:
             case 0:
                 self.leader_spawn_bomb(event_data)
@@ -218,6 +219,8 @@ class Leader:
                 self.leader_remove_explosion(event_data[0], event_data[1], event_data[2])
             case 4:
                 self.leader_finish_moving(event_data)
+            case 5:
+                self.leader_player_dies(event_data)
 
     def leader_spawn_bomb(self, data):
         x, y = data[0], data[1]
@@ -248,6 +251,9 @@ class Leader:
                 continue
             if self.server_loop.level_map[ny][nx] != 0:
                 continue
+            if self.server_loop.player_map[ny][nx] != 0:
+                data = (self.server_loop.player_map[ny][nx], nx, ny)
+                self.leader_player_dies(data)
             self.leader_spawn_explosion(nx, ny, owner)
             if self.server_loop.bomb_map[ny][nx] != 0:
                 chain_bomb_id = self.server_loop.bomb_map[ny][nx]
@@ -295,3 +301,12 @@ class Leader:
         player_id = data
         self.server_loop.players[player_id].moving = False
         self.outgoing_events.append({"event_type": 4, "data": [player_id]})
+
+    def leader_player_dies(self, data):
+        player_id, x, y = data[0], data[1], data[2]
+        player_x = self.server_loop.players[player_id].x
+        player_y = self.server_loop.players[player_id].y
+        self.server_loop.player_map[player_y][player_x] = 0
+        self.outgoing_events.append({"event_type": 5, "data": [player_id, x, y]})
+        self.event_queue.push(self.server_loop.global_tick + 20, 4, player_id)
+        # TODO disconnect dead player

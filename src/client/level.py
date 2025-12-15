@@ -137,7 +137,13 @@ class Level:
     def handle_moving_stop(self, data):
         player_id = data[0]
         self.players[player_id].moving = False
-        
+
+    def handle_dying(self, data):
+        player_id, x, y = data
+        self.player_map[y][x] = 0
+        print(self.player_map)
+
+
     def lay_bomb(self, id):
         """spawns a new bomb object on the player coordinates"""
         player = self.players[id]
@@ -166,6 +172,9 @@ class Level:
             
             if self.level_map[ny][nx] != 0:
                 continue
+            if self.player_map[ny][nx] != 0:
+                data_p = (self.player_map[ny][nx], nx, ny)
+                self.handle_dying(data_p)
             self.spawn_explosion(nx, ny, data[3])
 
             if self.bomb_map[ny][nx] != 0:
@@ -195,6 +204,7 @@ class Level:
         #  2 = player moves,
         #  3 = remove explosion,
         #  4 = player stops moving
+        #  5 = player dies
         match event_type:
             case 0:
                 self.spawn_bomb(data[0], data[1], data[2], data[3], data[4])
@@ -206,6 +216,8 @@ class Level:
                 self.remove_explosion(data[0])
             case 4:
                 self.handle_moving_stop(data)
+            case 5:
+                self.handle_dying(data)
 
     def sync_local_tick(self, server_tick):
         difference = server_tick - self.local_tick
