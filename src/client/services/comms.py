@@ -37,6 +37,7 @@ class ServerComms():
             time.sleep(1)
 
     def _try_connect(self):
+        """Attempts to connect to the leader by going through possible servers"""
         for i in range(len(self.servers_list)):
             index = (self.current_server_index + i) % len(self.servers_list)
             target = self.servers_list[index]
@@ -72,6 +73,7 @@ class ServerComms():
         time.sleep(2)
 
     def _recv_loop(self):
+        """Loop to receive messages from the server"""
         while self.connected:
             try:
                 data = self.sock.recv(4096).decode("utf-8")

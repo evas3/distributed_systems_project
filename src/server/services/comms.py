@@ -30,7 +30,7 @@ class ClientComms():
         return client
 
     def handle(self, client, queue):
-        """Pushes the events to a queue"""
+        """Pushes the messages from client to a queue"""
         while True:
             try:
                 data = client.recv(1024).decode("utf-8")
@@ -54,7 +54,7 @@ class ClientComms():
             pass
 
     def handle_follower(self, client, queue):
-        """Pushes the events to a queue"""
+        """Pushes the messages from follower to a queue"""
         while True:
             try:
                 data = client.recv(1024).decode("utf-8")
@@ -68,7 +68,6 @@ class ClientComms():
                 else:
                     message = json.loads(data)
                     if message["type"] == "ack":
-                        print("ONACK", flush=True)
                         self.acks += 1
                     else:
                         queue.put(message)
@@ -82,6 +81,7 @@ class ClientComms():
             pass
 
     def broadcast(self, clients, msg_type, data, tick):
+        """Sends message to given clients"""
         message = {"type": msg_type, "tick": tick, "data": data}
         
         if msg_type == "update":

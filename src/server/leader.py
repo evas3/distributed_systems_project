@@ -6,6 +6,7 @@ from services.comms import ClientComms
 from services.queue_service import EventQueue
 from objects.bomb import BombObject
 from objects.explosion import ExplosionObject
+import socket
 
 
 
@@ -14,7 +15,6 @@ class Leader:
         self.server_loop = server_loop
 
         self.client_queues = {}
-        self.event_queue = EventQueue()
         my_config = self.server_loop.peers_config[self.server_loop.server_id-1]
         self.comms = ClientComms(my_config[1], my_config[2])
         
@@ -24,12 +24,13 @@ class Leader:
         self.client_sockets = []
         self.outgoing_events = []
         self.last_tick = time.perf_counter()
-
-    def run_leader(self):
         self.comms.start_listening()
-        
+        self.accepting_clients = True
         accept_thread = threading.Thread(target=self.accept_clients, daemon=True)
         accept_thread.start()
+
+    def run(self):
+        """Runs the general clock loop of leader"""
 
         self.last_tick = time.perf_counter()
         
@@ -38,6 +39,45 @@ class Leader:
             if now - self.last_tick >= self.server_loop.tick_interval:
                 self.server_loop.global_tick += 1
                 self.last_tick += self.server_loop.tick_interval
+
+                while not self.server_loop.peer_queue.empty():
+                    msg = self.server_loop.peer_queue.get()
+                    if msg["type"] == "leader_announce":
+                        if msg["from"] < self.server_loop.server_id:
+                            self.server_loop.has_leader = True
+                            self.server_loop.leader_id = msg["from"]
+                            self.server_loop.leader_addr = (self.server_loop.peers_config[msg["from"] - 1][1], self.server_loop.peers_config[msg["from"] - 1][2])
+                            
+                            self.accepting_clients = False
+
+                            try:
+                                self.comms.server.close()
+                            except:
+                                pass
+                            self.comms.server = None
+
+                            for client_sock in self.client_sockets:
+                                try:
+                                    client_sock.shutdown(socket.SHUT_RDWR)
+                                except:
+                                    pass
+
+                                try:
+                                    client_sock.close()
+                                except:
+                                    pass
+
+                            self.client_sockets.clear()
+                            
+                            return "DEMOTION"
+                        else:
+                            self.server_loop.send_leader_announce()
+                    elif msg["type"] == "bully_ok":
+                        pass
+                    elif msg["type"] == "bully":
+                        pass
+                    elif msg["type"] == "state_request":
+                        self.server_loop.send_current_state(msg["from"])
 
                 if self.server_loop.global_tick % 60 == 0:
                     print(f"[LEADER] Global Tick: {self.server_loop.global_tick}", flush=True)
@@ -60,7 +100,8 @@ class Leader:
 
 
     def accept_clients(self):
-        while True:
+        """Accepts new clients and starts a thread for them. Identifies the connections either as clients or as follower nodes"""
+        while self.accepting_clients:
             try:
                 sock = self.comms.receive_connection()
                 if not sock:
@@ -119,31 +160,31 @@ class Leader:
                 break
 
     def send_heartbeat(self):
+        """Sends heartbeat message to let followers know it is still alive"""
         msg = {
             "type": "heartbeat",
             "leader_id": self.server_loop.server_id,
             "tick": self.server_loop.global_tick
         }
         raw = json.dumps(msg).encode("utf-8")
-        for follower_sock in self.follower_sockets.values():
-            try:
-                follower_sock.sendall(raw)
-            except:
-                print("[LEADER] Lost follower during heartbeat!", flush=True)
+        self.broadcast_msg(raw)
 
     def send_clock_sync(self):
+        """Sends clock sync message to clients"""
         tick = self.server_loop.global_tick
         timestamp = time.perf_counter()
         print(f"[CLOCK] Syncing clients to tick {tick}", flush=True)
         self.comms.broadcast(self.client_sockets, "clock", {"server_tick": tick, "timestamp": timestamp}, tick)
 
     def send_event_to_followers(self, event):
+        """Sends given event to followers"""
         msg = {"type": "event", "event": event}
         raw = json.dumps(msg).encode()
         for sock in self.follower_sockets.values():
             sock.sendall(raw)
 
     def broadcast_state(self):
+        """Broadcasts new events to followers and clients (if followers ack. Otherwise tries again)"""
         if len(self.outgoing_events) == 0:
             return
         
@@ -177,6 +218,7 @@ class Leader:
         self.client_sockets = active_sockets
 
     def wait_for_acks(self, tick):
+        """Blocks to wait for acks"""
         #TODO ADD TIMEOUT
         while self.comms.acks < len(self.follower_sockets):
             time.sleep(0.0005)
@@ -186,6 +228,7 @@ class Leader:
             return True
 
     def leader_process_inputs(self):
+        """Processes input from clients"""
         for client, q in self.client_queues.items():
             while not q.empty():
                 msg = q.get()
@@ -196,12 +239,14 @@ class Leader:
         self.leader_parse_event(msg["event_type"], msg["data"])
 
     def leader_handle_events(self):
-        ready = self.event_queue.pop_ready(self.server_loop.global_tick)
+        """Handles timed events from event queue"""
+        ready = self.server_loop.event_queue.pop_ready(self.server_loop.global_tick)
         for event in ready:
             self.leader_parse_event(event[1], event[2])
 
 
     def leader_parse_event(self, event_type, event_data):
+        """Calls appropriate event handler according to event type"""
         # 0 = bomb spawn
         # 1 = bomb explode
         # 2 = player moves
@@ -220,7 +265,9 @@ class Leader:
                 self.leader_finish_moving(event_data)
 
     def leader_spawn_bomb(self, data):
+        """Spawns a new bomb object"""
         x, y = data[0], data[1]
+        print(x,y)
         if self.server_loop.bomb_map[y][x] != 0:
             return
         bomb_id = self.server_loop.global_bomb_id
@@ -228,11 +275,12 @@ class Leader:
         self.server_loop.bombs[bomb_id] = BombObject(bomb_id, x, y, owner)
         self.server_loop.bomb_map[y][x] = bomb_id
         explode_tick = self.server_loop.global_tick + 120
-        self.event_queue.push(explode_tick, 1, bomb_id)
+        self.server_loop.event_queue.push(explode_tick, 1, bomb_id)
         self.outgoing_events.append({"event_type": 0, "data": [x, y, bomb_id, owner, explode_tick]})
         self.server_loop.global_bomb_id += 1
 
     def leader_explode_bomb(self, data):
+        """Explodes given bomb"""
         bomb_id = data
         if self.server_loop.bombs.get(bomb_id) is None:
             #already exploded
@@ -251,15 +299,16 @@ class Leader:
             self.leader_spawn_explosion(nx, ny, owner)
             if self.server_loop.bomb_map[ny][nx] != 0:
                 chain_bomb_id = self.server_loop.bomb_map[ny][nx]
-                self.event_queue.push(self.server_loop.global_tick, 1, chain_bomb_id)
+                self.server_loop.event_queue.push(self.server_loop.global_tick, 1, chain_bomb_id)
                 self.outgoing_events.append({"event_type": 0, "data": [nx, ny, chain_bomb_id, self.server_loop.bombs[chain_bomb_id].owner, self.server_loop.global_tick]})
                 continue
 
     def leader_spawn_explosion(self, x, y, owner):
+        """Spawns explosion objects with give coordinates"""
         new_explosion = ExplosionObject(x, y, owner)
         self.server_loop.explosion_map[y][x] += 1
         self.server_loop.explosions[self.server_loop.global_explosion_id] = new_explosion
-        self.event_queue.push(self.server_loop.global_tick + 90, 3, (self.server_loop.global_explosion_id, x, y))
+        self.server_loop.event_queue.push(self.server_loop.global_tick + 90, 3, (self.server_loop.global_explosion_id, x, y))
         self.server_loop.global_explosion_id += 1
 
     def leader_remove_explosion(self, id, x, y):
@@ -268,6 +317,7 @@ class Leader:
         del self.server_loop.explosions[id]
 
     def leader_move_player(self, data):
+        """Checks collisions and moves player if possible"""
         player_id, x, y = data[0], data[1], data[2]
         player_x = self.server_loop.players[player_id].x
         player_y = self.server_loop.players[player_id].y
@@ -287,11 +337,35 @@ class Leader:
                 self.server_loop.player_map[new_y][new_x] = player_id
                 self.server_loop.players[player_id].move(x, y)
                 self.outgoing_events.append({"event_type": 2, "data": [player_id, x, y, new_x, new_y]})
-                self.event_queue.push(self.server_loop.global_tick + 20, 4, player_id)
+                self.server_loop.event_queue.push(self.server_loop.global_tick + 20, 4, player_id)
         else:
             return
 
     def leader_finish_moving(self, data):
+        """Finishes moving and sets player to be able to move again"""
         player_id = data
         self.server_loop.players[player_id].moving = False
         self.outgoing_events.append({"event_type": 4, "data": [player_id]})
+
+    def broadcast_msg(self, msg):
+        """Broadcasts message to followers"""
+        dropped = []
+        for follower_id, follower_sock in self.follower_sockets.items():
+            try:
+                follower_sock.sendall(msg)
+            except:
+                print("[LEADER] Lost follower during broadcast!", flush=True)
+                try:
+                    follower_sock.shutdown(socket.SHUT_RDWR)
+                except:
+                    pass
+
+                try:
+                    follower_sock.close()
+                except:
+                    pass
+
+                dropped.append(follower_id)
+        if dropped:
+            for follower_id in dropped:
+                del self.follower_sockets[follower_id]

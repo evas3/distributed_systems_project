@@ -36,7 +36,7 @@ class Level:
         self._initialize_sprites(level_map)
 
     def _initialize_sprites(self, level_map):
-        """initializes the level"""
+        """initializes the sprites and objects according to the level maps"""
         height = len(level_map)
         width = len(level_map[0])
 
@@ -65,7 +65,7 @@ class Level:
                     self.players[cell] = PlayerObject(cell, x, y, Player(normalized_x, normalized_y, self.cell_size))
 
     def update(self, dt):
-        """updates all time-based events like player animations, bomb timers, and explosions"""
+        """updates all time-based events like player animations and event queue, and also handles the messages from the server, including event updates and clock syncing"""
         for player in self.players.values():
             player.update(dt)
 
@@ -101,7 +101,7 @@ class Level:
             explosion.render(screen)
 
     def move_player(self, id, x, y):
-        """checks if player can move, and sends event to server"""
+        """checks if player can move, and sends event to server if so"""
         
         player_x = self.players[id].x
         player_y = self.players[id].y
@@ -128,6 +128,7 @@ class Level:
             return
         
     def handle_moving(self, data):
+        """Moves the player object"""
         player_id, x, y, new_x, new_y = data
 
         self.player_map[new_y-y][new_x-x] = 0
@@ -135,16 +136,18 @@ class Level:
         self.players[player_id].move(x, y)
 
     def handle_moving_stop(self, data):
+        """Sets the player moving variable to false, and allows the player move again"""
         player_id = data[0]
         self.players[player_id].moving = False
         
     def lay_bomb(self, id):
-        """spawns a new bomb object on the player coordinates"""
+        """Sends a bomb spawning event to the server"""
         player = self.players[id]
         print(f"[CLIENT] Sending Bomb Request", flush=True)
         self.comms.send_event(0, [player.x, player.y, id])
 
     def spawn_bomb(self, x, y, id, owner, explosion_tick):
+        """Spawns a bomb object, and adds the explosion timing to the event queue"""
         self.bomb_map[y][x] = id
         self.bombs[id] = BombObject(id, x, y, owner, 120, Bomb(x*self.cell_size, y*self.cell_size, self.cell_size))
         self.event_queue.push(explosion_tick, 1, (id, x, y, owner))
@@ -190,6 +193,7 @@ class Level:
             del self.explosions[id]
 
     def handle_event(self, event_type, data):
+        """Calls appropriate event handler according to given type"""
         # 0 = bomb spawn,
         #  1 = bomb explode,
         #  2 = player moves,
@@ -208,6 +212,7 @@ class Level:
                 self.handle_moving_stop(data)
 
     def sync_local_tick(self, server_tick):
+        """Syncs local tick according to given server tick"""
         difference = server_tick - self.local_tick
 
         if abs(difference) > self.max_clock_drift:

@@ -6,20 +6,21 @@ from objects.bomb import BombObject
 from objects.explosion import ExplosionObject
 
 class Follower:
-    def __init__(self, leader_addr, server_loop):
+    def __init__(self, server_loop):
         self.leader_queue = Queue()
-        self.leader_addr = leader_addr
         self.server_loop = server_loop
 
-        self.comms = FollowerComms(leader_addr, server_loop.server_id, self.leader_queue)
+        self.comms = None
 
         self.event_queue = EventQueue()
 
         self.last_tick = time.perf_counter()
 
-    def run_follower(self):
-        """Follower connects to leader and mirrors state"""
+    def run(self):
+        """Runs the follower clock loop"""
+
         try:
+            self.comms = FollowerComms(self.server_loop.leader_addr, self.server_loop.server_id, self.leader_queue)
 
             self.comms.connect_to_leader()
             self.server_loop.last_heartbeat_tick = self.server_loop.global_tick
@@ -28,6 +29,25 @@ class Follower:
         
             while True:
                 now = time.perf_counter()
+
+                while not self.server_loop.peer_queue.empty():
+                    msg = self.server_loop.peer_queue.get()
+                    if msg["type"] == "leader_announce":
+                        if msg["from"] < self.server_loop.leader_id:
+                            self.server_loop.has_leader = True
+                            self.server_loop.leader_id = msg["from"]
+                            self.server_loop.leader_addr = (self.server_loop.peers_config[msg["from"] - 1][1], self.server_loop.peers_config[msg["from"] - 1][2])
+                            return "LEADER_SWITCH"
+                        else:
+                            pass
+                    elif msg["type"] == "bully_ok":
+                        pass
+                    elif msg["type"] == "bully":
+                        self.server_loop.peer_queue.put(msg)
+                        return "NEED_ELECTION"
+                    elif msg["type"] == "state_request":
+                        self.server_loop.send_current_state(msg["from"])
+
                 if now - self.last_tick >= self.server_loop.tick_interval:
                     self.server_loop.global_tick += 1
                     self.last_tick += self.server_loop.tick_interval
@@ -43,15 +63,18 @@ class Follower:
 
         except Exception as e:
             print(f"[FOLLOWER] Connection to Leader lost: {e}", flush=True)
-            return
+            #self.comms.close_socket()
+            return "NEED_ELECTION"
         
     def process_follower_messages(self):
+        """Processes messages from leader in message queue"""
         while not self.leader_queue.empty():
                 msg = self.leader_queue.get()
                 print(f"[INPUT] Received {msg['type']} from leader", flush=True)
                 self.process_follower_message(msg)
 
     def process_follower_message(self, message):
+        """Parses the given message"""
         if message["type"] == "event":
             ack = {
                 "type": "ack",
@@ -70,6 +93,7 @@ class Follower:
             self.server_loop.last_heartbeat_tick = self.server_loop.global_tick
 
     def wait_for_commit(self, tick):
+        """Blocks to wait for commit message from leader"""
         #TODO ADD TIMEOUT
         while not self.comms.commit:
             time.sleep(0.0005)
@@ -79,9 +103,11 @@ class Follower:
             return True
 
     def sync_clock_to_leader(self, tick):
+        """Syncs its clock to leader's"""
         self.server_loop.global_tick = tick
 
     def parse_event(self, event_type, event_data):
+        """Calls appropriate event handler for given event type"""
         # 0 = bomb spawn,
         #  1 = bomb explode,
         #  2 = player moves,
