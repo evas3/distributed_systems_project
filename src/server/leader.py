@@ -94,7 +94,21 @@ class Leader:
                     thread.start()
                     
                     if self.server_loop.new_player_id <= 4: 
-                        self.server_loop.new_player_id += 1
+                        pass
+                        #self.server_loop.new_player_id += 1
+                        #TODO different players should spawn in different corners etc
+
+                    init_msg = {
+                            "type": "init",
+                            "data":{ 
+                            "level_map": self.server_loop.level_map,
+                            "player_map": self.server_loop.player_map,
+                            "bomb_map": self.server_loop.bomb_map,
+                            "explosion_map": self.server_loop.explosion_map,
+                            "local_player_id": 1}
+                        }
+                    #TODO change id
+                    sock.send(json.dumps(init_msg).encode("utf-8"))
 
                 elif msg_type == "server_hello":
                     print(f"[NET] Connection identified as FOLLOWER SERVER", flush=True)

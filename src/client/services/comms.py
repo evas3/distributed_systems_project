@@ -57,6 +57,7 @@ class ServerComms():
                 self.current_server_index = index
                 print(f"[NET] Connected to {target}!", flush=True)
 
+                self._receive_init()
 
                 return
             except Exception as e:
@@ -69,6 +70,23 @@ class ServerComms():
         
         print("[NET] All servers unreachable, retrying in 2s...", flush=True)
         time.sleep(2)
+
+    def _receive_init(self):
+        """Receives init message from server. Message contains maps etc"""
+        try:
+            data = self.sock.recv(1024).decode("utf-8")
+            message = json.loads(data)
+            print("MOI", message)
+            if message["type"] == "init":
+                self.level_map = message["data"]["level_map"]
+                print("H", self.level_map)
+                self.player_map = message["data"]["player_map"]
+                self.bomb_map = message["data"]["bomb_map"]
+                self.explosion_map = message["data"]["explosion_map"]
+                self.local_player_id = message["data"]["local_player_id"]
+        except Exception as e:
+                print(f"[NET] Network error during receiving init: {e}", flush=True)
+
 
     def _recv_loop(self):
         while self.connected:

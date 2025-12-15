@@ -1,4 +1,5 @@
 import pygame
+import time
 from level import Level
 from services.queue_service import EventQueue
 from services.comms import ServerComms
@@ -9,46 +10,23 @@ SERVERS_LIST = [
     ("127.0.0.1", 55535)
 ]
 
-LEVEL_MAP = [[0, 0, 1, 0, 0],
-             [0, 0, 1, 0, 0],
-             [0, 0, 0, 0, 0],
-             [0, 0, 1, 0, 0],
-             [0, 0, 1, 0, 0]]
-
-PLAYER_MAP = [[1, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0],
-              [0, 0, 0, 0, 0],]
-
-BOMB_MAP = [[0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],]
-
-EXPLOSION_MAP = [[0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0],]
-
 CELL_SIZE = 100
 
 def main():
     comms = ServerComms(SERVERS_LIST)
-    
-    height = len(LEVEL_MAP)
-    width = len(LEVEL_MAP[0])
+    while not hasattr(comms, 'local_player_id'):
+        time.sleep(1)
+    event_queue = EventQueue()
+
+    height = len(comms.level_map)
+    width = len(comms.level_map[0])
     display_height = height * CELL_SIZE
     display_width = width * CELL_SIZE
 
     display = pygame.display.set_mode((display_width, display_height))
-
+    level = Level(comms.level_map, comms.player_map, comms.bomb_map, comms.explosion_map, CELL_SIZE, event_queue, comms, comms.local_player_id)
     pygame.display.set_caption("DisSysBomberman Client")
-    event_queue = EventQueue()
-    level = Level(LEVEL_MAP, PLAYER_MAP, BOMB_MAP, EXPLOSION_MAP, CELL_SIZE, event_queue, comms, 1)
-    game_loop = GameLoop(level, CELL_SIZE, display, 1)
+    game_loop = GameLoop(level, CELL_SIZE, display, comms.local_player_id)
 
     pygame.init()
     game_loop.start()
