@@ -80,6 +80,14 @@ class Leader:
 
                 if msg_type == "client_hello":
                     print("[NET] Connection identified as CLIENT", flush=True)
+                    """init_msg = {
+                            "type": "init",
+                            "local_id": self.server_loop.new_player_id,
+                            "level_map": self.server_loop.level_map,
+                            "player_map": self.server_loop.player_map
+                        }
+                    sock.send(json.dumps(init_msg).encode("utf-8"))
+                    """
                     self.client_sockets.append(sock)
 
                     client_q = Queue()
@@ -244,6 +252,9 @@ class Leader:
         self.server_loop.bomb_map[y][x] = 0
         del self.server_loop.bombs[bomb_id]
         self.leader_spawn_explosion(x, y, owner)
+        if self.server_loop.player_map[y][x] != 0:
+                data = (self.server_loop.player_map[y][x], x, y)
+                self.leader_player_dies(data)
         for direction in [(1,0), (-1,0), (0,1), (0,-1)]:
             nx = x + direction[0]
             ny = y + direction[1]
@@ -304,9 +315,7 @@ class Leader:
 
     def leader_player_dies(self, data):
         player_id, x, y = data[0], data[1], data[2]
-        player_x = self.server_loop.players[player_id].x
-        player_y = self.server_loop.players[player_id].y
-        self.server_loop.player_map[player_y][player_x] = 0
+        self.server_loop.players[player_id].die()
+        self.server_loop.player_map[y][x] = 0
         self.outgoing_events.append({"event_type": 5, "data": [player_id, x, y]})
-        self.event_queue.push(self.server_loop.global_tick + 20, 4, player_id)
         # TODO disconnect dead player

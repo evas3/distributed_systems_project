@@ -11,3 +11,6 @@ class PlayerObject:
             self.x += x
             self.y += y
             self.moving = True
+
+    def die(self):
+        self.alive = False

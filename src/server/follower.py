@@ -87,12 +87,14 @@ class Follower:
         #  2 = player moves,
         #  3 = remove explosion,
         #  4 = player stop
+        #  5 = player dies
         match event_type:
             case 0: self.spawn_bomb(event_data)
             case 1: self.explode_bomb(event_data)
             case 2: self.move_player(event_data)
             case 3: self.remove_explosion(event_data[0], event_data[1], event_data[2])
             case 4: self.finish_moving(event_data)
+            case 5: self.leader_player_dies(event_data)
 
     def spawn_bomb(self, data):
         x, y = data[0], data[1]
@@ -116,9 +118,15 @@ class Follower:
         del self.server_loop.bombs[bomb_id]
 
         self.spawn_explosion(x, y, owner)
+        if self.server_loop.player_map[y][x] != 0:
+                data = (self.server_loop.player_map[y][x], x, y)
+                self.leader_player_dies(data)
 
         for direction in [(1,0), (-1,0), (0,1), (0,-1)]:
             nx, ny = x + direction[0], y + direction[1]
+            if self.server_loop.player_map[ny][nx] != 0:
+                data = (self.server_loop.player_map[ny][nx], nx, ny)
+                self.leader_player_dies(data)
             if 0 <= nx < len(self.server_loop.level_map[0]) and 0 <= ny < len(self.server_loop.level_map):
                 if self.server_loop.level_map[ny][nx] == 0:
                     self.spawn_explosion(nx, ny, owner)
@@ -166,3 +174,8 @@ class Follower:
         player_id = data[0]
         if player_id in self.server_loop.players:
             self.server_loop.players[player_id].moving = False
+
+    def leader_player_dies(self, data):
+        player_id, x, y = data[0], data[1], data[2]
+        self.server_loop.player_map[y][x] = 0
+        self.server_loop.players[player_id].die()

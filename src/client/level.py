@@ -103,6 +103,9 @@ class Level:
     def move_player(self, id, x, y):
         """checks if player can move, and sends event to server"""
         
+        if id not in self.players:
+            return
+        
         player_x = self.players[id].x
         player_y = self.players[id].y
         new_x = player_x + x
@@ -141,11 +144,14 @@ class Level:
     def handle_dying(self, data):
         player_id, x, y = data
         self.player_map[y][x] = 0
-        print(self.player_map)
+        self.players[player_id].sprite.kill()
+        del self.players[player_id]
 
 
     def lay_bomb(self, id):
         """spawns a new bomb object on the player coordinates"""
+        if id not in self.players:
+            return
         player = self.players[id]
         print(f"[CLIENT] Sending Bomb Request", flush=True)
         self.comms.send_event(0, [player.x, player.y, id])
@@ -172,9 +178,7 @@ class Level:
             
             if self.level_map[ny][nx] != 0:
                 continue
-            if self.player_map[ny][nx] != 0:
-                data_p = (self.player_map[ny][nx], nx, ny)
-                self.handle_dying(data_p)
+
             self.spawn_explosion(nx, ny, data[3])
 
             if self.bomb_map[ny][nx] != 0:

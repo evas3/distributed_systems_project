@@ -58,7 +58,6 @@ class ServerComms():
                 print(f"[NET] Connected to {target}!", flush=True)
 
 
-
                 return
             except Exception as e:
                 print(f"[NET] Failed to connect to {target}: {e}", flush=True)

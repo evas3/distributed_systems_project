@@ -9,7 +9,6 @@ class Player(pygame.sprite.Sprite):
         self.pixel_x = x
         self.pixel_y = y
         self.cell_size = cell_size
-
         original = pygame.image.load(
             os.path.join(dirname, "..", "assets", "Player.png")
         ).convert_alpha()
